@@ -13,6 +13,7 @@ type Storage interface {
 	UpdateAccount(*Account) error
 	GetAccounts() ([]*Account, error)
 	GetAccountByID(int) (*Account, error)
+	GetAccountByNumber(int) (*Account, error)
 }
 
 type PostgresStore struct {
@@ -42,9 +43,10 @@ func (s *PostgresStore) Init() error {
 func (s *PostgresStore) createAccountTable() error {
 	query := `create table if not exists account (
 		id serial primary key,
-		first_name varchar(50),
-		last_name varchar(50),
+		first_name varchar(100),
+		last_name varchar(100),
 		number serial,
+		encrypted_password varchar(100),
 		balance serial,
 		created_at timestamp
 	)`
@@ -58,12 +60,13 @@ func (s *PostgresStore) CreateAccount(acc *Account) error {
 		first_name,
 		last_name,
 		number,
+		encrypted_password,
 		balance,
 		created_at
 	)
-	values($1,$2,$3,$4,$5)`
+	values($1,$2,$3,$4,$5,$6)`
 
-	response, err := s.db.Exec(query, acc.FirstName, acc.LastName, acc.Number, acc.Balance, acc.CreateAt)
+	response, err := s.db.Exec(query, acc.FirstName, acc.LastName, acc.Number,acc.EncryptedPassword, acc.Balance, acc.CreateAt)
 	if err != nil {
 		return err
 	}
@@ -94,6 +97,20 @@ func (s *PostgresStore) GetAccountByID(id int) (*Account, error) {
 	return nil, fmt.Errorf("account %d not found",id)
 }
 
+func(s *PostgresStore) GetAccountByNumber(number int) (*Account, error) {
+	rows, err := s.db.Query("select * from account where number = $1",number)
+	if err != nil {
+		return nil,err
+	}
+
+	for rows.Next() {
+		return scanIntoAccount(rows)
+	}
+
+	return nil, fmt.Errorf("number [%d] not found",number)
+}
+
+
 func (s *PostgresStore) GetAccounts() ([]*Account, error) {
 	rows, err := s.db.Query("select * from account")
 	if err != nil {
@@ -115,6 +132,8 @@ func (s *PostgresStore) GetAccounts() ([]*Account, error) {
 
 }
 
+
+
 func scanIntoAccount(rows *sql.Rows) (*Account,error) {
 	account := new(Account)
 		err := rows.Scan(
@@ -122,6 +141,7 @@ func scanIntoAccount(rows *sql.Rows) (*Account,error) {
 			&account.FirstName,
 			&account.LastName,
 			&account.Number,
+			&account.EncryptedPassword,
 			&account.Balance,
 			&account.CreateAt)
 
